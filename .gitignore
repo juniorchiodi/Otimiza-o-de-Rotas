@@ -1,0 +1,26 @@
+# Arquivos de dados e planilhas
+*.xlsx
+*.xls
+*.csv
+
+# Arquivos de cache específicos
+geocodificacao_cache.json
+google_distance_cache.json
+
+# Diretório de rotas geradas
+ROTAS-GERADAS/
+
+# Arquivos de ambiente e sistema do SO
+.DS_Store
+Thumbs.db
+
+# Artefatos e ambientes virtuais do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv
+ENV
+env
+*.env
