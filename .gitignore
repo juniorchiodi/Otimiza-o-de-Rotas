@@ -1,7 +1,7 @@
 # Arquivos de dados e planilhas
-#*.xlsx
-#*.xls
-#*.csv
+*.xlsx
+*.xls
+*.csv
 
 # Arquivos de cache específicos
 geocodificacao_cache.json
