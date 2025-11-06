@@ -356,7 +356,8 @@ def main():
     arquivo_excel = config.get("arquivo_excel", "ENDERECOS-ROTA.xlsx")
     nome_coluna_enderecos = config.get("nome_coluna_enderecos", "Endereco")
     nome_coluna_nomes = config.get("nome_coluna_nomes", "Nome")
-    ponto_partida = limpar_endereco(config.get("ponto_partida", "Rua Floriano Peixoto, 368, Centro, Itapuí - SP"))
+    ponto_partida_bruto = config.get("ponto_partida", "Rua Floriano Peixoto, 368, Centro, Itapuí - SP")
+    ponto_partida = ponto_partida_bruto if is_coordenada(ponto_partida_bruto) else limpar_endereco(ponto_partida_bruto)
 
     import sys
 
@@ -376,7 +377,8 @@ def main():
         try:
             df = pd.read_excel(arquivo_excel)
             df = df[df[nome_coluna_nomes].notna() & (df[nome_coluna_nomes] != "")]
-            enderecos = [limpar_endereco(end) for end in df[nome_coluna_enderecos].dropna().tolist()]
+            enderecos_brutos = df[nome_coluna_enderecos].dropna().tolist()
+            enderecos = [end if is_coordenada(end) else limpar_endereco(end) for end in enderecos_brutos]
             nomes = df[nome_coluna_nomes].fillna("").tolist()
             print_colorido(f"✅ Total de endereços encontrados: {len(enderecos)}", Fore.GREEN)
         except Exception as e:
@@ -462,7 +464,7 @@ def main():
             elif status == 'coordenada':
                 print_colorido(f"Endereço já é coordenada: {endereco}", Fore.CYAN)
             else:
-                print_colorido(f"Erro ao geocodificar: {endereco} (Motivo: {motivo_erro})", Fore.RED, estilo=Style.BRIGHT)
+                print_colorido(f"Erro ao geocodificar: {endereco} (Motivo: {motivo_erro})", Fore.RED)
 
         def marcar_enderecos_erro_excel(arquivo_excel, enderecos_com_erro):
             try:
@@ -542,12 +544,7 @@ def main():
             duracoes_parciais.append(dur)
 
         print_colorido(f"\n📊 Distância total da rota: {distancia_total:.2f} km", Fore.GREEN)
-        try:
-            horas = int(tempo_total_min // 60)
-            minutos = int(tempo_total_min % 60)
-            print_colorido(f"⏱️ Tempo total estimado: {horas}h {minutos}min", Fore.GREEN)
-        except (ValueError, TypeError):
-            print_colorido("⏱️ Tempo total estimado: Não foi possível calcular devido a distâncias inválidas.", Fore.YELLOW)
+        print_colorido(f"⏱️ Tempo total estimado: {int(tempo_total_min // 60)}h {int(tempo_total_min % 60)}min", Fore.GREEN)
 
         enderecos_ordenados = [enderecos_validos[i] for i in ordem_rota]
         nomes_ordenados = [nomes[enderecos.index(e)] if e in enderecos else "" for e in enderecos_ordenados]
@@ -680,7 +677,7 @@ def main():
                 pdf.cell(w_linha, 8, str(linha), 1, 0, "C")
                 pdf.cell(w_nome, 8, str(nome_cliente)[:28], 1, 0, "L")
                 pdf.cell(w_end, 8, str(endereco)[:50], 1, 0, "L")
-                pdf.cell(w_motivo, 8, str(motivo), 1, 1, "L")
+                pdf.cell(w_motivo, 8, str(motivo)[:30], 1, 1, "L")
 
         if outliers_info:
             if pdf.get_y() > 220: pdf.add_page()
