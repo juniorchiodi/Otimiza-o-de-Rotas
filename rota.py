@@ -2,6 +2,7 @@ import os
 import sys
 import traceback
 from tqdm import tqdm
+import concurrent.futures
 
 from utils.console import print_colorido, Fore, Style
 from utils.config_loader import carregar_config
@@ -44,30 +45,48 @@ def main():
         elif ponto_partida in cache:
             coordenadas.append(tuple(cache[ponto_partida]['coords'])); enderecos_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida")
         else:
-            resultado = geocodificar_endereco(ponto_partida_enriquecido)
+            resultado = geocodificar_endereco(ponto_partida_enriquecido, cidade_esperada=cidade)
             if resultado and 'coords' in resultado:
                 coordenadas.append(resultado['coords']); enderecos_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida")
                 cache[ponto_partida] = resultado
             else:
                 print_colorido("❌ Erro fatal com o Ponto de Partida.", Fore.RED); exit(1)
 
-        # --- 3. Geocodificação ---
-        print_colorido("\n🔄 Geocodificando endereços...", Fore.CYAN)
-        resultados = []
-        for end in tqdm(enderecos, desc="Progresso", unit="endereço"):
-            resultados.append(processar_endereco(end, cidade=cidade, cache=cache))
-        salvar_cache(cache) 
+        # --- 3. Geocodificação com Multithreading ---
+        print_colorido("\n🔄 Geocodificando endereços (Multithreading)...", Fore.CYAN)
+        resultados = [None] * len(enderecos)
 
+        def worker(idx_end, end):
+            # Retorna o índice junto com o resultado para manter a ordem original
+            return idx_end, processar_endereco(end, cidade=cidade, cache=cache)
+
+        # Max workers=5 para não estressar excessivamente a API Photon.
+        # Nominatim já possui um Lock global forçando 1 req/sec internamente.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            futuros = [executor.submit(worker, i, end) for i, end in enumerate(enderecos)]
+            for futuro in tqdm(concurrent.futures.as_completed(futuros), total=len(enderecos), desc="Progresso", unit="endereço"):
+                idx_end, resultado = futuro.result()
+                resultados[idx_end] = resultado
+
+        salvar_cache(cache)
+
+        sucessos, erros = 0, 0
         for idx_end, (endereco, coords, status, motivo_erro) in enumerate(resultados):
             if coords:
                 coordenadas.append(tuple(coords))
                 enderecos_validos.append(endereco)
-                nomes_validos.append(nomes[idx_end]) 
+                nomes_validos.append(nomes[idx_end])
+                sucessos += 1
             else:
                 enderecos_com_erro.append((idx_end + 1, endereco, motivo_erro))
-                
+                erros += 1
+
+        print_colorido(f"\n✅ Geocodificação concluída: {sucessos} com sucesso | ❌ {erros} erros.", Fore.GREEN if erros == 0 else Fore.YELLOW)
+
         if enderecos_com_erro: marcar_enderecos_erro_excel(arquivo_excel, enderecos_com_erro)
-        if len(enderecos_validos) <= 1: exit(1)
+        if len(enderecos_validos) <= 1:
+            print_colorido("❌ Nenhum endereço válido para roteirizar além do ponto de partida. Encerrando.", Fore.RED)
+            exit(1)
 
         # --- 4. Roteamento (Distâncias e Otimização) ---
         dist_matrix, dur_matrix = calcular_matriz_distancia_osrm(coordenadas)
