@@ -7,16 +7,10 @@ import numpy as np  # Operações numéricas e matrizes
 import os  # arquivos
 import unicodedata  # Remoção de acentos/normalização de texto
 import json  
-from concurrent.futures import ThreadPoolExecutor  # Paralelismo com threads
-import threading
-from functools import partial
-import hashlib
 from datetime import datetime, timedelta  
 from tqdm import tqdm  
 import colorama
 from colorama import Fore, Style  
-from requests.adapters import HTTPAdapter  # Adapter de requests com retry
-from urllib3.util.retry import Retry  # Política de retry
 import requests  # Requisições HTTP
 import openpyxl  
 from openpyxl.styles import PatternFill  # Estilo de células (preenchimento)
@@ -26,7 +20,7 @@ import re  # Expressões regulares
 colorama.init()  # Habilita cores no terminal no Windows
 
 # Configuração do geocodificador Nominatim
-geolocator = Nominatim(user_agent="rota_optimizer/1.0")
+geolocator = Nominatim(user_agent="juninho.junirj@gmail.com")
 
 def print_colorido(texto, cor=Fore.WHITE, estilo=Style.NORMAL):  
     print(f"{estilo}{cor}{texto}{Style.RESET_ALL}")  
@@ -64,26 +58,27 @@ def limpar_endereco(endereco):
     return endereco
 
 def enriquecer_endereco(endereco, cidade):
-    """Anexa a cidade ao endereço se não estiver presente, para melhorar a geocodificação."""
+    """Padroniza o endereço para o formato amigável ao OpenStreetMap."""
     if not cidade:
         return endereco
 
-    # Garante que o endereço é uma string
-    endereco_str = str(endereco)
+    endereco_str = str(endereco).strip()
+
+    # Substitui " - SP" ou "-SP" por ", SP"
+    endereco_str = re.sub(r'\s*-\s*([A-Z]{2})\b', r', \1', endereco_str, flags=re.IGNORECASE)
 
     endereco_norm = remover_acentos(endereco_str).lower()
     cidade_norm = remover_acentos(cidade).lower()
 
-    # Se a cidade já estiver no endereço, não faz nada
-    if cidade_norm in endereco_norm:
-        return endereco_str
+    # Se a cidade não estiver na string, adiciona
+    if cidade_norm not in endereco_norm:
+        endereco_str = f"{endereco_str}, {cidade}"
 
-    # Se o endereço já tiver uma sigla de estado (ex: SP, RJ), também não adiciona a cidade
-    # Regex para encontrar ", SP", " - RJ", etc. no final do endereço
-    if re.search(r'[\s,-]\s*[A-Z]{2}\s*$', endereco_str.upper()):
-        return endereco_str
+    # Adiciona "Brasil" no final se não existir, ajuda MUITO o Nominatim
+    if "brasil" not in endereco_norm:
+        endereco_str = f"{endereco_str}, Brasil"
 
-    return f"{endereco_str}, {cidade}"
+    return endereco_str
 
 # Cache para geocodificação com timestamp
 CACHE_FILE = "geocodificacao_cache.json"  # Arquivo onde o cache de geocodificação é salvo
@@ -112,11 +107,12 @@ def salvar_cache(cache):  # Persiste cache de geocodificação em disco
     except Exception as e:  
         print_colorido(f"Erro ao salvar cache: {str(e)}", Fore.RED)
 
-def geocodificar_endereco_nominatim(endereco, max_tentativas=3, intervalo=5):
+def geocodificar_endereco_nominatim(endereco, max_tentativas=3, intervalo=2):
     """Converte um endereço em coordenadas (latitude, longitude) usando Nominatim, com tratamento de erro detalhado."""
     motivo = "Falha na geocodificação"  # Mensagem de erro padrão
     for tentativa in range(max_tentativas):
         try:
+            time.sleep(1.1) # Garante que nunca bata mais de 1 req/seg
             location = geolocator.geocode(endereco, timeout=15)
             if location:
                 return {'coords': (location.latitude, location.longitude), 'timestamp': datetime.now().isoformat()}
@@ -126,9 +122,11 @@ def geocodificar_endereco_nominatim(endereco, max_tentativas=3, intervalo=5):
             motivo = "Timeout do serviço"
             print_colorido(f"{motivo} ao geocodificar '{endereco}' (tentativa {tentativa + 1}/{max_tentativas})", Fore.YELLOW)
         except GeocoderServiceError as e:
-            motivo = f"Erro de serviço: {e}"
-            print_colorido(f"Erro no serviço para '{endereco}': {e}", Fore.RED)
-            return {'error': motivo}  # Erros de serviço não devem ser repetidos
+            if "429" in str(e):
+                print_colorido("Limite atingido! Dormindo por 10 segundos...", Fore.RED)
+                time.sleep(10) # Pausa longa se for bloqueado
+                return {'error': "429: Limite excedido"}
+            return {'error': f"Erro de serviço: {e}"} # Faltou retornar algo se não for 429
         except Exception as e:
             motivo = f"Erro desconhecido: {e}"
             print_colorido(f"Erro inesperado ao geocodificar '{endereco}': {e}", Fore.RED)
@@ -140,12 +138,12 @@ def geocodificar_endereco_nominatim(endereco, max_tentativas=3, intervalo=5):
     return {'error': motivo}
 
 def geocodificar_endereco_photon(endereco, max_tentativas=3, intervalo=5):
-    """Converte um endereço em coordenadas (lat, lon) usando a API Photon como fallback."""
     params = {'q': endereco, 'limit': 1}
+    headers = {'User-Agent': 'juninho.junirj@gmail.com'} # Adicione isso
     motivo = "Falha na geocodificação (Photon)"
     for tentativa in range(max_tentativas):
         try:
-            response = requests.get("https://photon.komoot.io/api/", params=params, timeout=15)
+            response = requests.get("https://photon.komoot.io/api/", params=params, headers=headers, timeout=15)
             response.raise_for_status()
             data = response.json()
             if data and 'features' in data and data['features']:
@@ -182,7 +180,7 @@ def geocodificar_endereco(endereco, max_tentativas=3, intervalo=5):
     print_colorido(f"Falha no Nominatim para '{endereco}' ({motivo_falha_nominatim}). Tentando fallback...", Fore.YELLOW)
 
     # 2. Tentar com Photon
-    resultado_photon = geocodificar_endereco_photon(endereco, max_tentativas=max_tentativas, intervalo=intervalo)
+    resultado_photon = geocodificar_endereco_photon(endereco, max_tentativas=max_tentativas, intervalo=1)
     if resultado_photon and 'coords' in resultado_photon:
         resultado_photon['provider'] = 'Photon'
         return resultado_photon
@@ -423,18 +421,21 @@ def main():
                 print_colorido(f"❌ Erro: Não foi possível geocodificar o ponto de partida: {ponto_partida} (Motivo: {motivo_erro})", Fore.RED)
                 exit(1)
 
-        def processar_endereco(endereco, cidade, cache, lock):
+        def processar_endereco(endereco, cidade, cache): # <-- Removido o parâmetro 'lock'
             endereco_enriquecido = enriquecer_endereco(endereco, cidade)
             if is_coordenada(endereco):
                 coords = extrair_coordenada(endereco)
                 return (endereco, coords, 'coordenada', None) if coords else (endereco, None, 'erro', 'Coordenada inválida')
+            
             if endereco in cache:
                 provedor = cache[endereco].get('provider', 'desconhecido')
                 return (endereco, tuple(cache[endereco]['coords']), f'cache ({provedor})', None)
+            
             resultado = geocodificar_endereco(endereco_enriquecido)
+            
             if resultado and 'coords' in resultado:
-                with lock:
-                    cache[endereco] = resultado
+                cache[endereco] = resultado # <-- Salva direto no dicionário, sem precisar de 'with lock:'
+                salvar_cache(cache)         # <-- Salva o arquivo JSON em tempo real
                 status = f"geocodificado ({resultado.get('provider', 'desconhecido')})"
                 return (endereco, resultado['coords'], status, None)
             else:
@@ -442,12 +443,15 @@ def main():
                 return (endereco, None, 'erro', motivo_erro)
 
         print_colorido("\n🔄 Geocodificando endereços...", Fore.CYAN)
-        lock = threading.Lock()
-        worker_func = partial(processar_endereco, cidade=cidade, cache=cache, lock=lock)
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            resultados = list(tqdm(executor.map(worker_func, enderecos), total=len(enderecos), desc="Progresso", unit="endereço"))
+        resultados = []
+        
+        # Loop sequencial normal, já que API gratuita não permite paralelismo
+        for end in tqdm(enderecos, desc="Progresso", unit="endereço"):
+            # Chamada limpa, passando apenas o endereço, cidade e o cache
+            resultado = processar_endereco(end, cidade=cidade, cache=cache)
+            resultados.append(resultado)
 
-        salvar_cache(cache)
+        salvar_cache(cache) # Salva uma última vez ao final do loop por segurança
 
         for i, (endereco, coords, status, motivo_erro) in enumerate(resultados, 1):
             if coords:
