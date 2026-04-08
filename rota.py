@@ -6,7 +6,8 @@ import concurrent.futures
 
 from utils.console import print_colorido, Fore, Style
 from utils.config_loader import carregar_config
-from utils.formatadores import is_coordenada, limpar_endereco, extrair_coordenada, extrair_cidade, enriquecer_endereco
+from urllib.parse import quote
+from utils.formatadores import is_coordenada, limpar_endereco, extrair_coordenada, extrair_cidade, enriquecer_endereco, calcular_similaridade_string
 
 from core.data_manager import ler_planilha_excel, marcar_enderecos_erro_excel
 from core.geocoding import carregar_cache, salvar_cache, processar_endereco, geocodificar_endereco
@@ -33,6 +34,7 @@ def main():
         nomes, enderecos = ler_planilha_excel(arquivo_excel, nome_coluna_nomes, nome_coluna_enderecos)
 
         coordenadas, enderecos_validos, nomes_validos, enderecos_com_erro = [], [], [], []
+        enderecos_encontrados_map = {} # Mapeia endereço original para o encontrado
         cache = carregar_cache()
 
         ponto_partida_enriquecido = enriquecer_endereco(ponto_partida, cidade)
@@ -42,13 +44,16 @@ def main():
             coords = extrair_coordenada(ponto_partida)
             if coords:
                 coordenadas.append(coords); enderecos_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida")
+                enderecos_encontrados_map[ponto_partida] = ponto_partida
         elif ponto_partida in cache:
             coordenadas.append(tuple(cache[ponto_partida]['coords'])); enderecos_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida")
+            enderecos_encontrados_map[ponto_partida] = cache[ponto_partida].get('address', ponto_partida)
         else:
             resultado = geocodificar_endereco(ponto_partida_enriquecido, cidade_esperada=cidade)
             if resultado and 'coords' in resultado:
                 coordenadas.append(resultado['coords']); enderecos_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida")
                 cache[ponto_partida] = resultado
+                enderecos_encontrados_map[ponto_partida] = resultado.get('address', ponto_partida)
             else:
                 print_colorido("❌ Erro fatal com o Ponto de Partida.", Fore.RED); exit(1)
 
@@ -71,11 +76,12 @@ def main():
         salvar_cache(cache)
 
         sucessos, erros = 0, 0
-        for idx_end, (endereco, coords, status, motivo_erro) in enumerate(resultados):
+        for idx_end, (endereco, coords, status, motivo_erro, endereco_encontrado) in enumerate(resultados):
             if coords:
                 coordenadas.append(tuple(coords))
                 enderecos_validos.append(endereco)
                 nomes_validos.append(nomes[idx_end])
+                enderecos_encontrados_map[endereco] = endereco_encontrado
                 sucessos += 1
             else:
                 enderecos_com_erro.append((idx_end + 1, endereco, motivo_erro))
@@ -141,7 +147,15 @@ def main():
 
         enderecos_ordenados = [enderecos_validos[i] for i in ordem_rota]
         nomes_ordenados = [nomes_validos[i] for i in ordem_rota] 
-        links = [f"https://www.google.com/maps/place/{coordenadas[i][0]},{coordenadas[i][1]}" for i in ordem_rota]
+
+        # Link agora usa o texto do endereço para forçar o Maps a encontrar a casa exata, se disponível
+        links = []
+        for i in ordem_rota:
+            if is_coordenada(enderecos_validos[i]):
+                links.append(f"https://www.google.com/maps/place/{coordenadas[i][0]},{coordenadas[i][1]}")
+            else:
+                end_url = quote(f"{enderecos_validos[i]}, {extrair_cidade(enderecos_validos[i])}")
+                links.append(f"https://www.google.com/maps/search/?api=1&query={end_url}")
 
         # --- 6. Relatórios (QR e PDF) ---
         arquivos_qr_gerados = gerar_qrcodes_rota(coordenadas, ordem_rota)
@@ -153,6 +167,27 @@ def main():
                        enderecos_com_erro, nomes)
 
         apagar_qrcodes(arquivos_qr_gerados)
+
+        # --- 7. Tabela de Comparação de Nomes (Painel Final) ---
+        print_colorido("\n" + "="*80, Fore.CYAN)
+        print_colorido("🔍 REVISÃO DE ENDEREÇOS (Original vs Encontrado)", Fore.CYAN, Style.BRIGHT)
+        print_colorido("="*80, Fore.CYAN)
+        for original in enderecos_validos:
+            if original == ponto_partida or is_coordenada(original): continue
+            encontrado = enderecos_encontrados_map.get(original, "Desconhecido")
+
+            # Compara pra ver se é verde ou amarelo
+            if calcular_similaridade_string(original, encontrado):
+                cor = Fore.GREEN
+                simbolo = "✅"
+            else:
+                cor = Fore.YELLOW
+                simbolo = "⚠️ "
+
+            print_colorido(f"{simbolo} Planilha:   {original}", cor)
+            print_colorido(f"   Encontrado: {encontrado}\n", cor)
+
+        print_colorido("="*80, Fore.CYAN)
 
     except Exception as e:
         print_colorido(f"\n❌ Erro inesperado: {traceback.format_exc()}", Fore.RED)

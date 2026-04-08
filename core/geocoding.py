@@ -49,7 +49,11 @@ def geocodificar_endereco_nominatim(endereco, max_tentativas=3, intervalo=2):
                 time.sleep(1.2) # Hard rate-limit (Nominatim exige 1 req/sec absoluta max)
                 location = geolocator.geocode(endereco, timeout=15)
             if location:
-                return {'coords': (location.latitude, location.longitude), 'timestamp': datetime.now().isoformat()}
+                return {
+                    'coords': (location.latitude, location.longitude),
+                    'address': location.address,
+                    'timestamp': datetime.now().isoformat()
+                }
             else:
                 return {'error': 'Endereço não encontrado'}
         except GeocoderTimedOut:
@@ -82,7 +86,17 @@ def geocodificar_endereco_photon(endereco, max_tentativas=3, intervalo=5):
             data = response.json()
             if data and 'features' in data and data['features']:
                 lon, lat = data['features'][0]['geometry']['coordinates']
-                return {'coords': (lat, lon), 'timestamp': datetime.now().isoformat()}
+                props = data['features'][0]['properties']
+                rua = props.get('street', props.get('name', ''))
+                num = props.get('housenumber', '')
+                cidade = props.get('city', props.get('town', ''))
+                # Constrói a string do endereço encontrado
+                addr_encontrado = f"{rua}, {num} - {cidade}".strip(", -")
+                return {
+                    'coords': (lat, lon),
+                    'address': addr_encontrado,
+                    'timestamp': datetime.now().isoformat()
+                }
             else:
                 return {'error': 'Endereço não encontrado (Photon)'}
         except requests.exceptions.Timeout:
@@ -155,17 +169,17 @@ def processar_endereco(endereco, cidade, cache):
     endereco_enriquecido = enriquecer_endereco(endereco, cidade)
     if is_coordenada(endereco):
         coords = extrair_coordenada(endereco)
-        return (endereco, coords, 'coordenada', None) if coords else (endereco, None, 'erro', 'Coordenada inválida')
+        return (endereco, coords, 'coordenada', None, endereco) if coords else (endereco, None, 'erro', 'Coordenada inválida', None)
 
     with CACHE_LOCK:
         if endereco in cache:
-            return (endereco, tuple(cache[endereco]['coords']), f"cache ({cache[endereco].get('provider', '?')})", None)
+            return (endereco, tuple(cache[endereco]['coords']), f"cache ({cache[endereco].get('provider', '?')})", None, cache[endereco].get('address', 'Endereço do Cache'))
 
     resultado = geocodificar_endereco(endereco_enriquecido, cidade_esperada=cidade)
     if resultado and 'coords' in resultado:
         with CACHE_LOCK:
             cache[endereco] = resultado
         salvar_cache(cache)
-        return (endereco, resultado['coords'], f"geocodificado ({resultado.get('provider', '?')})", None)
+        return (endereco, resultado['coords'], f"geocodificado ({resultado.get('provider', '?')})", None, resultado.get('address', 'Endereço Encontrado'))
 
-    return (endereco, None, 'erro', resultado.get('error', 'Erro desconhecido') if resultado else 'Erro')
+    return (endereco, None, 'erro', resultado.get('error', 'Erro desconhecido') if resultado else 'Erro', None)
