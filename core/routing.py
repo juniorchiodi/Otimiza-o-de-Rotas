@@ -29,7 +29,7 @@ def calcular_matriz_distancia_osrm(coordenadas):
         print_colorido("Buscando distâncias reais nas rodovias (OSRM)...", Fore.CYAN)
         coords_str = ";".join([f"{lon},{lat}" for lat, lon in coordenadas])
         url = f"http://router.project-osrm.org/table/v1/driving/{coords_str}?annotations=distance,duration"
-
+        #url = f"http://192.168.88.94:5000/table/v1/driving/{coords_str}?annotations=distance,duration"
         response = requests.get(url, timeout=30)
         response.raise_for_status()
         data = response.json()

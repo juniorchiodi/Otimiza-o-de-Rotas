@@ -9,7 +9,12 @@ from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 from utils.console import print_colorido, Fore
 from utils.formatadores import enriquecer_endereco, is_coordenada, extrair_coordenada, remover_acentos
 
-geolocator = Nominatim(user_agent="juninho.junirj@gmail.com")
+# Configuração do geocodificador Nominatim (Agora 100% Local e Sem Limites!)
+geolocator = Nominatim(
+    #domain="192.168.88.94:5001",
+    #scheme="http",
+    user_agent="juninho.junirj@gmail.com"
+)
 
 # Lock global para chamadas ao Nominatim e salvamento no cache (thread safety)
 NOMINATIM_LOCK = threading.Lock()
