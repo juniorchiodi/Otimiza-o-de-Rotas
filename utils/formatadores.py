@@ -54,3 +54,29 @@ def formatar_minutos(minutos):
         if m == 60: h += 1; m = 0
         return f"{h}h {m:02d}min" if h > 0 else f"{m}min"
     except: return "-"
+
+def calcular_similaridade_string(str1, str2):
+    """
+    Calcula a similaridade simples entre duas strings.
+    Retorna True se forem parecidas o suficiente, False caso contrário.
+    """
+    if not str1 or not str2: return False
+    s1 = remover_acentos(str1).lower().replace("rua", "").replace("avenida", "").strip()
+    s2 = remover_acentos(str2).lower().replace("rua", "").replace("avenida", "").strip()
+
+    # Extrai números das duas strings
+    numeros1 = re.findall(r'\d+', s1)
+    numeros2 = re.findall(r'\d+', s2)
+
+    # Se tem números diferentes e não bate, é risco
+    if numeros1 and numeros2 and numeros1[0] != numeros2[0]:
+        return False
+
+    s1_palavras = set(re.findall(r'\w+', s1))
+    s2_palavras = set(re.findall(r'\w+', s2))
+
+    if not s1_palavras or not s2_palavras: return False
+
+    intersecao = s1_palavras.intersection(s2_palavras)
+    # Requer pelo menos 40% de similaridade baseada em palavras para ficar verde
+    return len(intersecao) / max(len(s1_palavras), len(s2_palavras)) > 0.4
