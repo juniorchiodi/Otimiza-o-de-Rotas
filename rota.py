@@ -30,7 +30,7 @@ def main():
     ponto_partida_bruto = config.get("ponto_partida", "Rua Floriano Peixoto, 368, Centro, Itapuí - SP")
     ponto_partida = ponto_partida_bruto if is_coordenada(ponto_partida_bruto) else limpar_endereco(ponto_partida_bruto)
 
-    cidade = sys.argv[1] if len(sys.argv) > 1 else input("Digite a cidade das entregas: ").strip()
+    cidade = sys.argv[1] if len(sys.argv) > 1 else input("Digite o nome da rota (cidade): ").strip()
 
     try:
         print_colorido("\n🚀 Iniciando processamento...", Fore.GREEN, Style.BRIGHT)
