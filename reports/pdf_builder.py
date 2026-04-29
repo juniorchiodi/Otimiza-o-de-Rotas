@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
@@ -22,15 +23,19 @@ def gerar_pdf_rota(cidade, ponto_partida, distancia_total, tempo_total_min,
     pdf.alias_nb_pages()
     pdf.add_page()
 
-    if os.path.exists("./assets/logo.png"):
-        pdf.image("./assets/logo.png", x=170, y=10, w=31.5)
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    logo_path = os.path.join(base_dir, "assets", "logo.png")
+    if os.path.exists(logo_path):
+        pdf.image(logo_path, x=170, y=10, w=31.5)
 
     pdf.set_font("Helvetica", "B", 16)
     data_atual = datetime.now().strftime("%d/%m/%Y")
     titulo = f"Rota de Entregas - {cidade}"
 
-    nome_arquivo = remover_acentos(f"{datetime.now().strftime('%Y-%m-%d')} - Rota de Entregas - {cidade}").replace("/", "-")
-    pasta_rotas = "ROTAS-GERADAS"
+    cidade_segura = re.sub(r'[\\/*?:"<>|]', "", cidade)
+    nome_arquivo = remover_acentos(f"{datetime.now().strftime('%Y-%m-%d')} - Rota de Entregas - {cidade_segura}").replace("/", "-")
+
+    pasta_rotas = os.path.join(base_dir, "ROTAS-GERADAS")
     if not os.path.exists(pasta_rotas): os.makedirs(pasta_rotas)
     arquivo_saida_pdf = os.path.join(pasta_rotas, f"{nome_arquivo}.pdf")
 
@@ -159,4 +164,4 @@ def gerar_pdf_rota(cidade, ponto_partida, distancia_total, tempo_total_min,
             pdf.cell(50, 8, str(motivo)[:30], border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="L")
 
     pdf.output(arquivo_saida_pdf)
-    print_colorido(f"\n✅ PDF gerado com sucesso: {arquivo_saida_pdf}", Fore.GREEN)
+    print_colorido(f"\n✅ PDF gerado com sucesso: {os.path.abspath(arquivo_saida_pdf)}", Fore.GREEN)
