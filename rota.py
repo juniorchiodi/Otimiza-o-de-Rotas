@@ -20,6 +20,11 @@ from reports.pdf_builder import gerar_pdf_rota
 def main():
     config = carregar_config()
     arquivo_excel = config.get("arquivo_excel", "ENDERECOS-ROTA.xlsx")
+
+    # Ensure arquivo_excel is an absolute path based on the project root
+    if not os.path.isabs(arquivo_excel):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        arquivo_excel = os.path.join(base_dir, arquivo_excel)
     nome_coluna_enderecos = config.get("nome_coluna_enderecos", "Endereco")
     nome_coluna_nomes = config.get("nome_coluna_nomes", "Nome")
     ponto_partida_bruto = config.get("ponto_partida", "Rua Floriano Peixoto, 368, Centro, Itapuí - SP")
