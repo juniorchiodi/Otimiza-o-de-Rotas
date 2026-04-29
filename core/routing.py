@@ -79,11 +79,23 @@ def identificar_outliers(dist_matrix, enderecos_validos, limite_desvio=2.5, p80_
         media_ponto = sum(dist_ponto) / len(dist_ponto)
         p80 = sorted(dist_ponto)[max(0, min(len(dist_ponto) - 1, int(0.8 * (len(dist_ponto) - 1))))]
 
-        if (media_ponto > media + (limite_desvio * desvio)) or (p80 > p80_limite_km):
+        eh_outlier = False
+
+        # Ponto de Partida (0): Só remove se for geograficamente absurdo, ignora desvio estatístico.
+        if i == 0:
+            if p80 > p80_limite_km:
+                eh_outlier = True
+        else:
+            # Demais pontos: Remove por distância absurda ou por estar estatisticamente isolado
+            if (media_ponto > media + (limite_desvio * desvio)) or (p80 > p80_limite_km):
+                eh_outlier = True
+
+        if eh_outlier:
             outliers.append(i)
             print_colorido(f"Ponto identificado como outlier: {enderecos_validos[i]}", Fore.YELLOW)
         else:
             pontos_principais.append(i)
+
     return pontos_principais, outliers
 
 def encontrar_melhor_rota_ortools(dist_matrix):
