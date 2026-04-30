@@ -74,7 +74,10 @@ def identificar_outliers(dist_matrix, enderecos_validos, limite_desvio=2.5, p80_
 
     for i in range(n):
         dist_ponto = [dist_matrix[i][j] for j in range(n) if i != j and dist_matrix[i][j] != float('inf')]
-        if not dist_ponto: continue
+        if not dist_ponto:
+            outliers.append(i)
+            print_colorido(f"Ponto identificado como outlier (isolado): {enderecos_validos[i]}", Fore.YELLOW)
+            continue
 
         media_ponto = sum(dist_ponto) / len(dist_ponto)
         p80 = sorted(dist_ponto)[max(0, min(len(dist_ponto) - 1, int(0.8 * (len(dist_ponto) - 1))))]
