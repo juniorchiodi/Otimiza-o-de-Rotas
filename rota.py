@@ -112,7 +112,9 @@ def main():
                 linha_excel = nomes.index(nomes_validos[idx]) + 1 if nomes_validos[idx] in nomes else 0
                 enderecos_com_erro.append((linha_excel, enderecos_validos[idx], "Coordenada em outra cidade (Outlier)"))
             
-            if 0 in outliers_idx: exit(1)
+            if 0 in outliers_idx:
+                print_colorido("❌ Ponto de partida muito distante (outlier extremo). Encerrando para evitar rota impossível.", Fore.RED)
+                exit(1)
             coordenadas = [coordenadas[i] for i in pontos_principais]
             enderecos_validos = [enderecos_validos[i] for i in pontos_principais]
             nomes_validos = [nomes_validos[i] for i in pontos_principais] 
