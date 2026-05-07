@@ -46,13 +46,13 @@ def salvar_cache(cache):
         except Exception as e:
             pass
 
-def geocodificar_endereco_nominatim(endereco, max_tentativas=3, intervalo=2):
+def geocodificar_endereco_nominatim(query_params, endereco_legivel, max_tentativas=3, intervalo=2):
     motivo = "Falha na geocodificação"
     for tentativa in range(max_tentativas):
         try:
             with NOMINATIM_LOCK:
                 time.sleep(1.2) # Hard rate-limit (Nominatim exige 1 req/sec absoluta max)
-                location = geolocator.geocode(endereco, timeout=15)
+                location = geolocator.geocode(query_params, timeout=15)
             if location:
                 return {
                     'coords': (location.latitude, location.longitude),
@@ -63,7 +63,7 @@ def geocodificar_endereco_nominatim(endereco, max_tentativas=3, intervalo=2):
                 return {'error': 'Endereço não encontrado'}
         except GeocoderTimedOut:
             motivo = "Timeout do serviço"
-            print_colorido(f"{motivo} ao geocodificar '{endereco}' (tentativa {tentativa + 1}/{max_tentativas})", Fore.YELLOW)
+            print_colorido(f"{motivo} ao geocodificar '{endereco_legivel}' (tentativa {tentativa + 1}/{max_tentativas})", Fore.YELLOW)
         except GeocoderServiceError as e:
             if "429" in str(e):
                 print_colorido("Limite atingido! Dormindo por 10 segundos...", Fore.RED)
@@ -72,7 +72,7 @@ def geocodificar_endereco_nominatim(endereco, max_tentativas=3, intervalo=2):
             return {'error': f"Erro de serviço: {e}"}
         except Exception as e:
             motivo = f"Erro desconhecido: {e}"
-            print_colorido(f"Erro inesperado ao geocodificar '{endereco}': {e}", Fore.RED)
+            print_colorido(f"Erro inesperado ao geocodificar '{endereco_legivel}': {e}", Fore.RED)
 
         if tentativa < max_tentativas - 1:
             time.sleep(intervalo)
@@ -80,8 +80,8 @@ def geocodificar_endereco_nominatim(endereco, max_tentativas=3, intervalo=2):
             return {'error': motivo}
     return {'error': motivo}
 
-def geocodificar_endereco_photon(endereco, max_tentativas=3, intervalo=5):
-    params = {'q': endereco, 'limit': 1}
+def geocodificar_endereco_photon(endereco_str, max_tentativas=3, intervalo=5):
+    params = {'q': endereco_str, 'limit': 1}
     headers = {'User-Agent': 'juninho.junirj@gmail.com'}
     motivo = "Falha na geocodificação (Photon)"
     for tentativa in range(max_tentativas):
@@ -145,46 +145,143 @@ def validar_cidade_reversa(coords, cidade_esperada):
         return True, "Falha na validação (Fallback aceito)"
     return True, "Cidade não identificada (Aceito por padrão)"
 
-def geocodificar_endereco(endereco, cidade_esperada=None, max_tentativas=3, intervalo=5):
-    # 1. Tentar Nominatim
-    resultado = geocodificar_endereco_nominatim(endereco, max_tentativas=2, intervalo=intervalo)
-    provider = 'Nominatim'
+def construir_string_endereco(end_dict):
+    """
+    Constrói a string de endereço a partir do dicionário estruturado.
+    """
+    if isinstance(end_dict, str):
+        return end_dict
 
-    # 2. Se falhar, Tentar Photon
-    if not (resultado and 'coords' in resultado):
-        motivo_falha = resultado.get('error', 'Falha') if resultado else 'Falha'
-        # print_colorido(f"Falha no Nominatim para '{endereco}' ({motivo_falha}). Tentando fallback Photon...", Fore.YELLOW)
-        resultado = geocodificar_endereco_photon(endereco, max_tentativas=max_tentativas, intervalo=1)
-        provider = 'Photon'
+    logradouro = end_dict.get('logradouro', '')
+    numero = end_dict.get('numero', '')
+    bairro = end_dict.get('bairro', '')
+    cidade = end_dict.get('cidade', '')
+    cep = end_dict.get('cep', '')
 
-    # 3. Validar se pegou coords e pertence à cidade
+    partes = []
+    if logradouro: partes.append(logradouro)
+    if numero: partes.append(numero)
+    if bairro: partes.append(bairro)
+    if cidade: partes.append(f"{cidade} - SP")
+    if cep: partes.append(cep)
+
+    # Photon Query String
+    photon_query = ", ".join(partes) + ", Brasil" if partes else ""
+    return photon_query
+
+def geocodificar_endereco_estruturado(end_dict, max_tentativas=3, intervalo=2):
+    """
+    Implementa o fallback:
+    1. Photon (String Completa)
+    2. Nominatim (Estruturada COM Número)
+    3. Nominatim (Estruturada SEM Número)
+    """
+    cidade_esperada = end_dict.get('cidade', '')
+    endereco_str = construir_string_endereco(end_dict)
+
+    # ==========================================
+    # TENTATIVA 1: Photon (Busca em string única)
+    # ==========================================
+    resultado = geocodificar_endereco_photon(endereco_str, max_tentativas=1, intervalo=intervalo)
+    provider = 'Photon'
+
     if resultado and 'coords' in resultado:
-        coords = resultado['coords']
-        valido, motivo = validar_cidade_reversa(coords, cidade_esperada)
+        valido, motivo = validar_cidade_reversa(resultado['coords'], cidade_esperada)
+        if valido:
+            resultado['provider'] = provider
+            return resultado
+
+    # ==========================================
+    # TENTATIVA 2: Nominatim (Busca Estruturada COM número)
+    # ==========================================
+    logradouro = end_dict.get('logradouro', '')
+    numero = end_dict.get('numero', '')
+
+    street_with_number = f"{logradouro} {numero}".strip()
+
+    params_nominatim_1 = {
+        'street': street_with_number,
+        'city': end_dict.get('cidade', ''),
+        'state': 'SP',
+        'postalcode': end_dict.get('cep', ''),
+        'country': 'Brasil'
+    }
+
+    # Remove empty values to not confuse Nominatim
+    params_nominatim_1 = {k: v for k, v in params_nominatim_1.items() if v}
+
+    resultado = geocodificar_endereco_nominatim(params_nominatim_1, endereco_str, max_tentativas=1, intervalo=intervalo)
+    provider = 'Nominatim-Exato'
+
+    if resultado and 'coords' in resultado:
+        valido, motivo = validar_cidade_reversa(resultado['coords'], cidade_esperada)
+        if valido:
+            resultado['provider'] = provider
+            return resultado
+
+    # ==========================================
+    # TENTATIVA 3: Nominatim (Busca Estruturada SEM número)
+    # ==========================================
+    params_nominatim_2 = {
+        'street': logradouro, # Apenas nome da rua
+        'city': end_dict.get('cidade', ''),
+        'state': 'SP',
+        'postalcode': end_dict.get('cep', ''),
+        'country': 'Brasil'
+    }
+    params_nominatim_2 = {k: v for k, v in params_nominatim_2.items() if v}
+
+    resultado = geocodificar_endereco_nominatim(params_nominatim_2, endereco_str, max_tentativas=1, intervalo=intervalo)
+    provider = 'Nominatim-SemNumero'
+
+    if resultado and 'coords' in resultado:
+        valido, motivo = validar_cidade_reversa(resultado['coords'], cidade_esperada)
         if valido:
             resultado['provider'] = provider
             return resultado
         else:
             return {'error': motivo}
 
-    # Se ambos falharem ou for inválido
-    return {'error': "Não encontrado após fallback"}
+    # Se todas falharem
+    return {'error': "Nao_Encontrado"}
 
-def processar_endereco(endereco, cidade, cache):
-    endereco_enriquecido = enriquecer_endereco(endereco, cidade)
-    if is_coordenada(endereco):
-        coords = extrair_coordenada(endereco)
-        return (endereco, coords, 'coordenada', None, endereco) if coords else (endereco, None, 'erro', 'Coordenada inválida', None)
+def processar_endereco(end_dict, cidade, cache):
+    endereco_str = construir_string_endereco(end_dict)
+
+    if is_coordenada(endereco_str):
+        coords = extrair_coordenada(endereco_str)
+        return (endereco_str, coords, 'coordenada', None, endereco_str) if coords else (endereco_str, None, 'erro', 'Coordenada inválida', None)
+
+    # Chave para cache agora usa a string completa construída
+    cache_key = endereco_str
 
     with CACHE_LOCK:
-        if endereco in cache:
-            return (endereco, tuple(cache[endereco]['coords']), f"cache ({cache[endereco].get('provider', '?')})", None, cache[endereco].get('address', 'Endereço do Cache'))
+        if cache_key in cache:
+            return (endereco_str, tuple(cache[cache_key]['coords']), f"cache ({cache[cache_key].get('provider', '?')})", None, cache[cache_key].get('address', 'Endereço do Cache'))
 
-    resultado = geocodificar_endereco(endereco_enriquecido, cidade_esperada=cidade)
+    # Se for apenas uma string (ex: Ponto de partida passado em rota.py), geocodifica só como string via Photon/Nominatim string (legado)
+    if isinstance(end_dict, str):
+        # Para string simples (ponto de partida não estruturado) vamos usar Nominatim fallback (como era antes)
+        resultado = geocodificar_endereco_nominatim(end_dict, endereco_legivel=end_dict, max_tentativas=2)
+        provider = 'Nominatim-String'
+        if not (resultado and 'coords' in resultado):
+            resultado = geocodificar_endereco_photon(end_dict, max_tentativas=1)
+            provider = 'Photon-String'
+
+        if resultado and 'coords' in resultado:
+             valido, motivo = validar_cidade_reversa(resultado['coords'], cidade)
+             if valido:
+                 resultado['provider'] = provider
+             else:
+                 resultado = {'error': motivo}
+    else:
+        # Caminho Novo: Estruturado
+        resultado = geocodificar_endereco_estruturado(end_dict)
+
     if resultado and 'coords' in resultado:
         with CACHE_LOCK:
-            cache[endereco] = resultado
+            cache[cache_key] = resultado
         salvar_cache(cache)
-        return (endereco, resultado['coords'], f"geocodificado ({resultado.get('provider', '?')})", None, resultado.get('address', 'Endereço Encontrado'))
+        return (endereco_str, resultado['coords'], f"geocodificado ({resultado.get('provider', '?')})", None, resultado.get('address', 'Endereço Encontrado'))
 
-    return (endereco, None, 'erro', resultado.get('error', 'Erro desconhecido') if resultado else 'Erro', None)
+    return (endereco_str, None, 'erro', resultado.get('error', 'Erro desconhecido') if resultado else 'Erro', None)
