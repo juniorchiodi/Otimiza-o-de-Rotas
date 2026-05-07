@@ -10,7 +10,7 @@ from urllib.parse import quote
 from utils.formatadores import is_coordenada, limpar_endereco, extrair_coordenada, extrair_cidade, enriquecer_endereco, calcular_similaridade_string
 
 from core.data_manager import ler_planilha_excel, marcar_enderecos_erro_excel
-from core.geocoding import carregar_cache, salvar_cache, processar_endereco, geocodificar_endereco
+from core.geocoding import carregar_cache, salvar_cache, processar_endereco, geocodificar_endereco_estruturado, geocodificar_endereco_photon, geocodificar_endereco_nominatim, validar_cidade_reversa
 from core.routing import (calcular_matriz_distancia_osrm, identificar_outliers,
                           encontrar_melhor_rota_ortools, encontrar_melhor_rota_2opt, ORTOOLS_AVAILABLE)
 
@@ -25,8 +25,15 @@ def main():
     if not os.path.isabs(arquivo_excel):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         arquivo_excel = os.path.join(base_dir, arquivo_excel)
-    nome_coluna_enderecos = config.get("nome_coluna_enderecos", "Endereco")
     nome_coluna_nomes = config.get("nome_coluna_nomes", "Nome")
+    colunas_endereco = {
+        'logradouro': config.get("coluna_logradouro", "Logradouro"),
+        'numero': config.get("coluna_numero", "Numero"),
+        'bairro': config.get("coluna_bairro", "Bairro"),
+        'cidade': config.get("coluna_cidade", "Cidade"),
+        'cep': config.get("coluna_cep", "Cep")
+    }
+
     ponto_partida_bruto = config.get("ponto_partida", "Rua Floriano Peixoto, 368, Centro, Itapuí - SP")
     ponto_partida = ponto_partida_bruto if is_coordenada(ponto_partida_bruto) else limpar_endereco(ponto_partida_bruto)
 
@@ -36,11 +43,14 @@ def main():
         print_colorido("\n🚀 Iniciando processamento...", Fore.GREEN, Style.BRIGHT)
 
         # --- 1. Leitura de Dados ---
-        nomes, enderecos = ler_planilha_excel(arquivo_excel, nome_coluna_nomes, nome_coluna_enderecos)
+        nomes, dados_estruturados, df = ler_planilha_excel(arquivo_excel, nome_coluna_nomes, colunas_endereco)
 
         coordenadas, enderecos_validos, nomes_validos, enderecos_com_erro = [], [], [], []
         enderecos_encontrados_map = {} # Mapeia endereço original para o encontrado
         cache = carregar_cache()
+
+        # Array para preencher novas colunas do DataFrame
+        df_lats, df_lons, df_origens = [None] * len(df), [None] * len(df), ["Nao_Encontrado"] * len(df)
 
         ponto_partida_enriquecido = enriquecer_endereco(ponto_partida, cidade)
         
@@ -54,7 +64,19 @@ def main():
             coordenadas.append(tuple(cache[ponto_partida]['coords'])); enderecos_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida")
             enderecos_encontrados_map[ponto_partida] = cache[ponto_partida].get('address', ponto_partida)
         else:
-            resultado = geocodificar_endereco(ponto_partida_enriquecido, cidade_esperada=cidade)
+            resultado = geocodificar_endereco_nominatim(ponto_partida_enriquecido, endereco_legivel=ponto_partida_enriquecido, max_tentativas=2)
+            provider = 'Nominatim-String'
+            if not (resultado and 'coords' in resultado):
+                resultado = geocodificar_endereco_photon(ponto_partida_enriquecido, max_tentativas=1)
+                provider = 'Photon-String'
+
+            if resultado and 'coords' in resultado:
+                 valido, motivo = validar_cidade_reversa(resultado['coords'], cidade)
+                 if valido:
+                     resultado['provider'] = provider
+                 else:
+                     resultado = {'error': motivo}
+
             if resultado and 'coords' in resultado:
                 coordenadas.append(resultado['coords']); enderecos_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida")
                 cache[ponto_partida] = resultado
@@ -64,33 +86,63 @@ def main():
 
         # --- 3. Geocodificação com Multithreading ---
         print_colorido("\n🔄 Geocodificando endereços (Multithreading)...", Fore.CYAN)
-        resultados = [None] * len(enderecos)
+        resultados = [None] * len(dados_estruturados)
 
-        def worker(idx_end, end):
+        def worker(idx_end, end_dict):
             # Retorna o índice junto com o resultado para manter a ordem original
-            return idx_end, processar_endereco(end, cidade=cidade, cache=cache)
+            # Note que processar_endereco no geocoding.py já foi atualizado para lidar com dicionários
+            return idx_end, processar_endereco(end_dict, cidade=cidade, cache=cache)
 
         # Max workers=5 para não estressar excessivamente a API Photon.
         # Nominatim já possui um Lock global forçando 1 req/sec internamente.
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            futuros = [executor.submit(worker, i, end) for i, end in enumerate(enderecos)]
-            for futuro in tqdm(concurrent.futures.as_completed(futuros), total=len(enderecos), desc="Progresso", unit="endereço"):
+            futuros = [executor.submit(worker, i, end_dict) for i, end_dict in enumerate(dados_estruturados)]
+            for futuro in tqdm(concurrent.futures.as_completed(futuros), total=len(dados_estruturados), desc="Progresso", unit="endereço"):
                 idx_end, resultado = futuro.result()
                 resultados[idx_end] = resultado
 
         salvar_cache(cache)
 
         sucessos, erros = 0, 0
-        for idx_end, (endereco, coords, status, motivo_erro, endereco_encontrado) in enumerate(resultados):
+        for idx_end, (endereco_str, coords, status, motivo_erro, endereco_encontrado) in enumerate(resultados):
             if coords:
                 coordenadas.append(tuple(coords))
-                enderecos_validos.append(endereco)
+                enderecos_validos.append(endereco_str)
                 nomes_validos.append(nomes[idx_end])
-                enderecos_encontrados_map[endereco] = endereco_encontrado
+                enderecos_encontrados_map[endereco_str] = endereco_encontrado
+
+                # Preencher dados para o DataFrame
+                df_lats[idx_end] = coords[0]
+                df_lons[idx_end] = coords[1]
+
+                # Extrair o provider do status para colocar em Origem_Geo
+                origem_extraida = status
+                if "geocodificado" in status:
+                    # Extrair o que está entre parênteses
+                    partes = status.split("(")
+                    if len(partes) > 1:
+                        origem_extraida = partes[1].replace(")", "")
+                df_origens[idx_end] = origem_extraida
+
                 sucessos += 1
             else:
-                enderecos_com_erro.append((idx_end + 1, endereco, motivo_erro))
+                enderecos_com_erro.append((idx_end + 1, endereco_str, motivo_erro))
                 erros += 1
+
+        # Atualizar o DataFrame com as novas colunas
+        df['Latitude'] = df_lats
+        df['Longitude'] = df_lons
+        df['Origem_Geo'] = df_origens
+
+        # Salvar o DataFrame de volta na planilha para persistir as coordenadas e Origem_Geo
+        try:
+            if arquivo_excel.endswith('.csv'):
+                df.to_csv(arquivo_excel, index=False)
+            else:
+                df.to_excel(arquivo_excel, index=False)
+            print_colorido("\n💾 Planilha atualizada com Latitude, Longitude e Origem_Geo.", Fore.GREEN)
+        except Exception as e:
+            print_colorido(f"\n⚠️ Não foi possível salvar a planilha com as novas colunas: {e}", Fore.YELLOW)
 
         print_colorido(f"\n✅ Geocodificação concluída: {sucessos} com sucesso | ❌ {erros} erros.", Fore.GREEN if erros == 0 else Fore.YELLOW)
 

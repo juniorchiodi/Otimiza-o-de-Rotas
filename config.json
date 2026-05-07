@@ -1,7 +1,10 @@
-
 {
   "arquivo_excel": "ENDERECOS-ROTA.xlsx",
-  "nome_coluna_enderecos": "Endereco",
   "nome_coluna_nomes": "Nome",
+  "coluna_logradouro": "Logradouro",
+  "coluna_numero": "Numero",
+  "coluna_bairro": "Bairro",
+  "coluna_cidade": "Cidade",
+  "coluna_cep": "Cep",
   "ponto_partida": "Rua Floriano Peixoto, 368, Centro, Itapuí - SP"
 }
