@@ -211,7 +211,7 @@ def geocodificar_endereco_estruturado(end_dict, max_tentativas=3, intervalo=2):
     params_nominatim_1 = {k: v for k, v in params_nominatim_1.items() if v}
 
     resultado = geocodificar_endereco_nominatim(params_nominatim_1, endereco_str, max_tentativas=1, intervalo=intervalo)
-    provider = 'Nominatim-Exato'
+    provider = 'Nominatim-ComNumero'
 
     if resultado and 'coords' in resultado:
         valido, motivo = validar_cidade_reversa(resultado['coords'], cidade_esperada)
