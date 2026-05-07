@@ -94,9 +94,18 @@ def geocodificar_endereco_photon(endereco_str, max_tentativas=3, intervalo=5):
                 props = data['features'][0]['properties']
                 rua = props.get('street', props.get('name', ''))
                 num = props.get('housenumber', '')
+                bairro = props.get('district', props.get('suburb', props.get('neighbourhood', '')))
                 cidade = props.get('city', props.get('town', ''))
-                # Constrói a string do endereço encontrado
-                addr_encontrado = f"{rua}, {num} - {cidade}".strip(", -")
+
+                # Constrói a string do endereço encontrado com bairro
+                partes_addr = []
+                if rua: partes_addr.append(rua)
+                if num: partes_addr.append(num)
+                if bairro: partes_addr.append(bairro)
+                if cidade: partes_addr.append(cidade)
+
+                addr_encontrado = ", ".join(partes_addr)
+
                 return {
                     'coords': (lat, lon),
                     'address': addr_encontrado,
@@ -180,7 +189,7 @@ def geocodificar_endereco_estruturado(end_dict, max_tentativas=3, intervalo=2):
     endereco_str = construir_string_endereco(end_dict)
 
     # ==========================================
-    # TENTATIVA 1: Photon (Busca em string única)
+    # TENTATIVA 1: Photon (Busca em string completa com CEP)
     # ==========================================
     resultado = geocodificar_endereco_photon(endereco_str, max_tentativas=1, intervalo=intervalo)
     provider = 'Photon'
@@ -192,7 +201,33 @@ def geocodificar_endereco_estruturado(end_dict, max_tentativas=3, intervalo=2):
             return resultado
 
     # ==========================================
-    # TENTATIVA 2: Nominatim (Busca Estruturada COM número)
+    # TENTATIVA 2: Photon (Busca SEM CEP para relaxar a restrição)
+    # ==========================================
+    logradouro = end_dict.get('logradouro', '')
+    numero = end_dict.get('numero', '')
+    bairro = end_dict.get('bairro', '')
+    cidade = end_dict.get('cidade', '')
+
+    partes_sem_cep = []
+    if logradouro: partes_sem_cep.append(logradouro)
+    if numero: partes_sem_cep.append(numero)
+    if bairro: partes_sem_cep.append(bairro)
+    if cidade: partes_sem_cep.append(f"{cidade} - SP")
+
+    photon_query_sem_cep = ", ".join(partes_sem_cep) + ", Brasil" if partes_sem_cep else ""
+
+    if photon_query_sem_cep:
+        resultado = geocodificar_endereco_photon(photon_query_sem_cep, max_tentativas=1, intervalo=intervalo)
+        provider = 'Photon-SemCEP'
+
+        if resultado and 'coords' in resultado:
+            valido, motivo = validar_cidade_reversa(resultado['coords'], cidade_esperada)
+            if valido:
+                resultado['provider'] = provider
+                return resultado
+
+    # ==========================================
+    # TENTATIVA 3: Nominatim (Busca Estruturada COM número)
     # ==========================================
     logradouro = end_dict.get('logradouro', '')
     numero = end_dict.get('numero', '')
@@ -203,7 +238,6 @@ def geocodificar_endereco_estruturado(end_dict, max_tentativas=3, intervalo=2):
         'street': street_with_number,
         'city': end_dict.get('cidade', ''),
         'state': 'SP',
-        'postalcode': end_dict.get('cep', ''),
         'country': 'Brasil'
     }
 
@@ -220,13 +254,12 @@ def geocodificar_endereco_estruturado(end_dict, max_tentativas=3, intervalo=2):
             return resultado
 
     # ==========================================
-    # TENTATIVA 3: Nominatim (Busca Estruturada SEM número)
+    # TENTATIVA 4: Nominatim (Busca Estruturada SEM número)
     # ==========================================
     params_nominatim_2 = {
         'street': logradouro, # Apenas nome da rua
         'city': end_dict.get('cidade', ''),
         'state': 'SP',
-        'postalcode': end_dict.get('cep', ''),
         'country': 'Brasil'
     }
     params_nominatim_2 = {k: v for k, v in params_nominatim_2.items() if v}
