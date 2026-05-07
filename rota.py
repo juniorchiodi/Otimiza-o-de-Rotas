@@ -161,7 +161,7 @@ def main():
             if is_coordenada(enderecos_validos[i]):
                 links.append(f"https://www.google.com/maps/place/{coordenadas[i][0]},{coordenadas[i][1]}")
             else:
-                end_url = quote(f"{enderecos_validos[i]}, {extrair_cidade(enderecos_validos[i])}")
+                end_url = quote(enderecos_validos[i])
                 links.append(f"https://www.google.com/maps/search/?api=1&query={end_url}")
 
         # --- 6. Relatórios (QR e PDF) ---
