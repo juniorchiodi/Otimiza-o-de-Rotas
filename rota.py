@@ -26,12 +26,23 @@ def gerar_link_maps(endereco_dict, lat=None, lon=None, usar_coordenada=False):
         # Busca estruturada ideal
         if isinstance(endereco_dict, dict):
             # Formatar a string usando os dados originais limpos (sem CEP)
-            partes = []
-            if endereco_dict.get('logradouro'): partes.append(endereco_dict['logradouro'])
-            if endereco_dict.get('numero'): partes.append(endereco_dict['numero'])
-            if endereco_dict.get('bairro'): partes.append(endereco_dict['bairro'])
-            if endereco_dict.get('cidade'): partes.append(endereco_dict['cidade'])
-            endereco_limpo = ", ".join(partes)
+            # Logradouro, Numero - Bairro, Cidade
+            rua_num = []
+            if endereco_dict.get('logradouro'): rua_num.append(endereco_dict['logradouro'])
+            if endereco_dict.get('numero'): rua_num.append(str(endereco_dict['numero']))
+            rua_num_str = ", ".join(rua_num)
+
+            bairro_cidade = []
+            if endereco_dict.get('bairro'): bairro_cidade.append(endereco_dict['bairro'])
+            if endereco_dict.get('cidade'): bairro_cidade.append(endereco_dict['cidade'])
+            bairro_cidade_str = ", ".join(bairro_cidade)
+
+            if rua_num_str and bairro_cidade_str:
+                endereco_limpo = f"{rua_num_str} - {bairro_cidade_str}"
+            elif rua_num_str:
+                endereco_limpo = rua_num_str
+            else:
+                endereco_limpo = bairro_cidade_str
         else:
             # Ponto de partida pode ser string
             endereco_limpo = str(endereco_dict)
