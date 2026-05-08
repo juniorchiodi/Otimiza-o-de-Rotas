@@ -207,13 +207,17 @@ def main():
         enderecos_ordenados = [enderecos_validos[i] for i in ordem_rota]
         nomes_ordenados = [nomes_validos[i] for i in ordem_rota] 
 
-        # Link agora usa o texto do endereço para forçar o Maps a encontrar a casa exata, se disponível
+        # Link agora usa o endereço limpo encontrado pela API (se disponível) ou usa as coordenadas diretamente
         links = []
         for i in ordem_rota:
-            if is_coordenada(enderecos_validos[i]):
+            endereco_original = enderecos_validos[i]
+            endereco_limpo = enderecos_encontrados_map.get(endereco_original)
+
+            # Se for uma coordenada direta ou se o endereço limpo for inválido, usa a Latitude/Longitude
+            if is_coordenada(endereco_original) or not endereco_limpo or endereco_limpo == "Desconhecido":
                 links.append(f"https://www.google.com/maps/place/{coordenadas[i][0]},{coordenadas[i][1]}")
             else:
-                end_url = quote(enderecos_validos[i])
+                end_url = quote(endereco_limpo)
                 links.append(f"https://www.google.com/maps/search/?api=1&query={end_url}")
 
         # --- 6. Relatórios (QR e PDF) ---
