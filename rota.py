@@ -6,7 +6,7 @@ import concurrent.futures
 
 from utils.console import print_colorido, Fore, Style
 from utils.config_loader import carregar_config
-import urllib.parse
+from urllib.parse import quote
 from utils.formatadores import is_coordenada, limpar_endereco, extrair_coordenada, extrair_cidade, enriquecer_endereco, calcular_similaridade_string
 
 from core.data_manager import ler_planilha_excel, marcar_enderecos_erro_excel
@@ -16,28 +16,6 @@ from core.routing import (calcular_matriz_distancia_osrm, identificar_outliers,
 
 from reports.qrcode_maker import gerar_qrcodes_rota, apagar_qrcodes
 from reports.pdf_builder import gerar_pdf_rota
-
-
-def gerar_link_maps(endereco_dict, lat=None, lon=None, usar_coordenada=False):
-    if usar_coordenada and lat and lon:
-        # Fallback para precisão absoluta
-        return f"https://www.google.com/maps/dir/?api=1&destination={lat},{lon}"
-    else:
-        # Busca estruturada ideal
-        if isinstance(endereco_dict, dict):
-            # Formatar a string usando os dados originais limpos (sem CEP)
-            partes = []
-            if endereco_dict.get('logradouro'): partes.append(endereco_dict['logradouro'])
-            if endereco_dict.get('numero'): partes.append(endereco_dict['numero'])
-            if endereco_dict.get('bairro'): partes.append(endereco_dict['bairro'])
-            if endereco_dict.get('cidade'): partes.append(endereco_dict['cidade'])
-            endereco_limpo = ", ".join(partes)
-        else:
-            # Ponto de partida pode ser string
-            endereco_limpo = str(endereco_dict)
-
-        query_codificada = urllib.parse.quote(endereco_limpo)
-        return f"https://www.google.com/maps/dir/?api=1&destination={query_codificada}"
 
 def main():
     config = carregar_config()
@@ -68,8 +46,6 @@ def main():
         nomes, dados_estruturados, df = ler_planilha_excel(arquivo_excel, nome_coluna_nomes, colunas_endereco)
 
         coordenadas, enderecos_validos, nomes_validos, enderecos_com_erro = [], [], [], []
-        dados_estruturados_validos = []
-        origens_geo_validos = []
         enderecos_encontrados_map = {} # Mapeia endereço original para o encontrado
         cache = carregar_cache()
 
@@ -82,10 +58,10 @@ def main():
         if is_coordenada(ponto_partida):
             coords = extrair_coordenada(ponto_partida)
             if coords:
-                coordenadas.append(coords); enderecos_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida"); dados_estruturados_validos.append(ponto_partida); origens_geo_validos.append("coordenada")
+                coordenadas.append(coords); enderecos_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida")
                 enderecos_encontrados_map[ponto_partida] = ponto_partida
         elif ponto_partida in cache:
-            coordenadas.append(tuple(cache[ponto_partida]['coords'])); enderecos_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida"); dados_estruturados_validos.append(ponto_partida); origens_geo_validos.append(cache[ponto_partida].get('provider', 'cache'))
+            coordenadas.append(tuple(cache[ponto_partida]['coords'])); enderecos_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida")
             enderecos_encontrados_map[ponto_partida] = cache[ponto_partida].get('address', ponto_partida)
         else:
             resultado = geocodificar_endereco_nominatim(ponto_partida_enriquecido, endereco_legivel=ponto_partida_enriquecido, max_tentativas=2)
@@ -102,7 +78,7 @@ def main():
                      resultado = {'error': motivo}
 
             if resultado and 'coords' in resultado:
-                coordenadas.append(resultado['coords']); enderecos_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida"); dados_estruturados_validos.append(ponto_partida); origens_geo_validos.append(provider)
+                coordenadas.append(resultado['coords']); enderecos_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida")
                 cache[ponto_partida] = resultado
                 enderecos_encontrados_map[ponto_partida] = resultado.get('address', ponto_partida)
             else:
@@ -133,7 +109,6 @@ def main():
                 coordenadas.append(tuple(coords))
                 enderecos_validos.append(endereco_str)
                 nomes_validos.append(nomes[idx_end])
-                dados_estruturados_validos.append(dados_estruturados[idx_end])
                 enderecos_encontrados_map[endereco_str] = endereco_encontrado
 
                 # Preencher dados para o DataFrame
@@ -142,13 +117,12 @@ def main():
 
                 # Extrair o provider do status para colocar em Origem_Geo
                 origem_extraida = status
-                if "geocodificado" in status or "cache" in status:
+                if "geocodificado" in status:
                     # Extrair o que está entre parênteses
                     partes = status.split("(")
                     if len(partes) > 1:
                         origem_extraida = partes[1].replace(")", "")
                 df_origens[idx_end] = origem_extraida
-                origens_geo_validos.append(origem_extraida)
 
                 sucessos += 1
             else:
@@ -196,8 +170,6 @@ def main():
             coordenadas = [coordenadas[i] for i in pontos_principais]
             enderecos_validos = [enderecos_validos[i] for i in pontos_principais]
             nomes_validos = [nomes_validos[i] for i in pontos_principais] 
-            dados_estruturados_validos = [dados_estruturados_validos[i] for i in pontos_principais]
-            origens_geo_validos = [origens_geo_validos[i] for i in pontos_principais]
             dist_matrix, dur_matrix = calcular_matriz_distancia_osrm(coordenadas)
 
         outliers_idx_set = set()
@@ -234,28 +206,15 @@ def main():
 
         enderecos_ordenados = [enderecos_validos[i] for i in ordem_rota]
         nomes_ordenados = [nomes_validos[i] for i in ordem_rota] 
-        dados_estruturados_ordenados = [dados_estruturados_validos[i] for i in ordem_rota]
-        origens_geo_ordenados = [origens_geo_validos[i] for i in ordem_rota]
 
-        # Geração de Links Nativo (Google Maps API Dir)
+        # Link agora usa o texto do endereço para forçar o Maps a encontrar a casa exata, se disponível
         links = []
-        for i, idx_rota in enumerate(ordem_rota):
-            end_dict = dados_estruturados_ordenados[i]
-            origem_geo = origens_geo_ordenados[i]
-            lat, lon = coordenadas[idx_rota]
-
-            usar_coordenada = False
-            # Check for low confidence fallbacks
-            if is_coordenada(enderecos_ordenados[i]) or origem_geo == 'coordenada':
-                usar_coordenada = True
-            elif origem_geo and 'SemNumero' in origem_geo:
-                usar_coordenada = True
-            # We can also check for rural/rodovia keywords in the string
-            elif any(keyword in enderecos_ordenados[i].lower() for keyword in ['zona rural', 'rodovia', 'km', 'sitio', 'sítio', 'fazenda', 'chacara', 'chácara']):
-                usar_coordenada = True
-
-            link = gerar_link_maps(end_dict, lat, lon, usar_coordenada)
-            links.append(link)
+        for i in ordem_rota:
+            if is_coordenada(enderecos_validos[i]):
+                links.append(f"https://www.google.com/maps/place/{coordenadas[i][0]},{coordenadas[i][1]}")
+            else:
+                end_url = quote(enderecos_validos[i])
+                links.append(f"https://www.google.com/maps/search/?api=1&query={end_url}")
 
         # --- 6. Relatórios (QR e PDF) ---
         arquivos_qr_gerados = gerar_qrcodes_rota(coordenadas, ordem_rota)
