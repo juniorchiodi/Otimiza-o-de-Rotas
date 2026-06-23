@@ -46,6 +46,7 @@ def main():
         nomes, dados_estruturados, df = ler_planilha_excel(arquivo_excel, nome_coluna_nomes, colunas_endereco)
 
         coordenadas, enderecos_validos, nomes_validos, enderecos_com_erro = [], [], [], []
+        enderecos_maps_validos = []
         enderecos_encontrados_map = {} # Mapeia endereço original para o encontrado
         cache = carregar_cache()
 
@@ -58,10 +59,10 @@ def main():
         if is_coordenada(ponto_partida):
             coords = extrair_coordenada(ponto_partida)
             if coords:
-                coordenadas.append(coords); enderecos_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida")
+                coordenadas.append(coords); enderecos_validos.append(ponto_partida); enderecos_maps_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida")
                 enderecos_encontrados_map[ponto_partida] = ponto_partida
         elif ponto_partida in cache:
-            coordenadas.append(tuple(cache[ponto_partida]['coords'])); enderecos_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida")
+            coordenadas.append(tuple(cache[ponto_partida]['coords'])); enderecos_validos.append(ponto_partida); enderecos_maps_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida")
             enderecos_encontrados_map[ponto_partida] = cache[ponto_partida].get('address', ponto_partida)
         else:
             resultado = geocodificar_endereco_nominatim(ponto_partida_enriquecido, endereco_legivel=ponto_partida_enriquecido, max_tentativas=2)
@@ -78,7 +79,7 @@ def main():
                      resultado = {'error': motivo}
 
             if resultado and 'coords' in resultado:
-                coordenadas.append(resultado['coords']); enderecos_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida")
+                coordenadas.append(resultado['coords']); enderecos_validos.append(ponto_partida); enderecos_maps_validos.append(ponto_partida); nomes_validos.append("Ponto de Partida")
                 cache[ponto_partida] = resultado
                 enderecos_encontrados_map[ponto_partida] = resultado.get('address', ponto_partida)
             else:
@@ -104,10 +105,11 @@ def main():
         salvar_cache(cache)
 
         sucessos, erros = 0, 0
-        for idx_end, (endereco_str, coords, status, motivo_erro, endereco_encontrado) in enumerate(resultados):
+        for idx_end, (endereco_str, coords, status, motivo_erro, endereco_encontrado, endereco_maps_str) in enumerate(resultados):
             if coords:
                 coordenadas.append(tuple(coords))
                 enderecos_validos.append(endereco_str)
+                enderecos_maps_validos.append(endereco_maps_str)
                 nomes_validos.append(nomes[idx_end])
                 enderecos_encontrados_map[endereco_str] = endereco_encontrado
 
@@ -169,6 +171,7 @@ def main():
                 exit(1)
             coordenadas = [coordenadas[i] for i in pontos_principais]
             enderecos_validos = [enderecos_validos[i] for i in pontos_principais]
+            enderecos_maps_validos = [enderecos_maps_validos[i] for i in pontos_principais]
             nomes_validos = [nomes_validos[i] for i in pontos_principais] 
             dist_matrix, dur_matrix = calcular_matriz_distancia_osrm(coordenadas)
 
@@ -210,10 +213,10 @@ def main():
         # Link agora usa o texto do endereço para forçar o Maps a encontrar a casa exata, se disponível
         links = []
         for i in ordem_rota:
-            if is_coordenada(enderecos_validos[i]):
+            if is_coordenada(enderecos_maps_validos[i]):
                 links.append(f"https://www.google.com/maps/place/{coordenadas[i][0]},{coordenadas[i][1]}")
             else:
-                end_url = quote(enderecos_validos[i])
+                end_url = quote(enderecos_maps_validos[i])
                 links.append(f"https://www.google.com/maps/search/?api=1&query={end_url}")
 
         # --- 6. Relatórios (QR e PDF) ---
