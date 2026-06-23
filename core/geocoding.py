@@ -169,6 +169,28 @@ def construir_string_endereco(end_dict):
     photon_query = ", ".join(partes) + ", Brasil" if partes else ""
     return photon_query
 
+def construir_string_maps(end_dict):
+    """
+    Constrói a string de endereço a partir do dicionário estruturado,
+    sem o bairro, para melhor compatibilidade com links do Google Maps.
+    """
+    if isinstance(end_dict, str):
+        return end_dict
+
+    logradouro = end_dict.get('logradouro', '')
+    numero = end_dict.get('numero', '')
+    cidade = end_dict.get('cidade', '')
+    cep = end_dict.get('cep', '')
+
+    partes = []
+    if logradouro: partes.append(logradouro)
+    if numero: partes.append(numero)
+    if cidade: partes.append(f"{cidade} - SP")
+    if cep: partes.append(cep)
+
+    return ", ".join(partes) + ", Brasil" if partes else ""
+
+
 def geocodificar_endereco_estruturado(end_dict, max_tentativas=3, intervalo=2):
     """
     Implementa o fallback:
@@ -247,17 +269,18 @@ def geocodificar_endereco_estruturado(end_dict, max_tentativas=3, intervalo=2):
 
 def processar_endereco(end_dict, cidade, cache):
     endereco_str = construir_string_endereco(end_dict)
+    endereco_maps_str = construir_string_maps(end_dict)
 
     if is_coordenada(endereco_str):
         coords = extrair_coordenada(endereco_str)
-        return (endereco_str, coords, 'coordenada', None, endereco_str) if coords else (endereco_str, None, 'erro', 'Coordenada inválida', None)
+        return (endereco_str, coords, 'coordenada', None, endereco_str, endereco_maps_str) if coords else (endereco_str, None, 'erro', 'Coordenada inválida', None, endereco_maps_str)
 
     # Chave para cache agora usa a string completa construída
     cache_key = endereco_str
 
     with CACHE_LOCK:
         if cache_key in cache:
-            return (endereco_str, tuple(cache[cache_key]['coords']), f"cache ({cache[cache_key].get('provider', '?')})", None, cache[cache_key].get('address', 'Endereço do Cache'))
+            return (endereco_str, tuple(cache[cache_key]['coords']), f"cache ({cache[cache_key].get('provider', '?')})", None, cache[cache_key].get('address', 'Endereço do Cache'), endereco_maps_str)
 
     # Se for apenas uma string (ex: Ponto de partida passado em rota.py), geocodifica só como string via Photon/Nominatim string (legado)
     if isinstance(end_dict, str):
@@ -282,6 +305,6 @@ def processar_endereco(end_dict, cidade, cache):
         with CACHE_LOCK:
             cache[cache_key] = resultado
         salvar_cache(cache)
-        return (endereco_str, resultado['coords'], f"geocodificado ({resultado.get('provider', '?')})", None, resultado.get('address', 'Endereço Encontrado'))
+        return (endereco_str, resultado['coords'], f"geocodificado ({resultado.get('provider', '?')})", None, resultado.get('address', 'Endereço Encontrado'), endereco_maps_str)
 
-    return (endereco_str, None, 'erro', resultado.get('error', 'Erro desconhecido') if resultado else 'Erro', None)
+    return (endereco_str, None, 'erro', resultado.get('error', 'Erro desconhecido') if resultado else 'Erro', None, endereco_maps_str)
