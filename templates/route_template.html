@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rota de Entregas — Bariri / Jaú · Moment's Eventos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --red:#CC2229; --red-dk:#A81B22; --red-soft:#FBEBEC;
+  --ink:#1A1A1A; --text:#2D2D2D; --muted:#6B6B73;
+  --line:#E6E6EA; --bg:#F7F7F9; --white:#fff;
+}
+@page{
+  size:A4;
+  margin:10mm 8mm 15mm 8mm;
+  @bottom-left {
+    content: "Gerado em {{ data_atual }}";
+    font-size: 9px;
+    color: #6B6B73;
+    font-family: 'Montserrat', system-ui, sans-serif;
+    font-weight: 500;
+  }
+  @bottom-center {
+    content: "Página " counter(page) " de " counter(pages);
+    font-size: 9px;
+    color: #6B6B73;
+    font-family: 'Montserrat', system-ui, sans-serif;
+    font-weight: 500;
+  }
+  @bottom-right {
+    content: "Moment's Eventos · Roteirização Inteligente";
+    font-size: 9px;
+    color: #6B6B73;
+    font-family: 'Montserrat', system-ui, sans-serif;
+    font-weight: 500;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#EFEFF3;font-family:'Montserrat',system-ui,sans-serif;color:var(--text);-webkit-font-smoothing:antialiased}
+.page{width:194mm;margin:24px auto;background:var(--white);border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.08);overflow:hidden}
+.topbar{height:6px;background:var(--red)}
+.header{display:flex;justify-content:space-between;align-items:center;padding:18px 36px 8px}
+.header h1{font-size:13px;font-weight:900;color:var(--ink);letter-spacing:.5px;margin:0}
+.header .sub{font-size:9.5px;color:var(--muted);font-weight:500;margin-top:3px}
+.pill{background:var(--red-soft);color:var(--red);padding:6px 14px;border-radius:999px;font-weight:600;font-size:10px}
+.hero{display:flex;justify-content:space-between;align-items:center;padding:18px 36px 10px}
+.hero h2{font-size:32px;font-weight:900;color:var(--ink);margin:0 0 4px}
+.hero .city{color:var(--red);font-weight:700;font-size:16px}
+.hero .desc{color:var(--muted);font-weight:500;font-size:10.5px;margin-top:8px}
+.hero .accent{width:42px;height:3px;background:var(--red);border-radius:2px;margin-top:10px}
+.hero img{height:96px}
+
+.section{padding:0 36px 24px}
+.card{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:22px 24px;position:relative;overflow:hidden}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--red)}
+.card .label{font-size:9px;font-weight:600;color:var(--muted);letter-spacing:1px}
+.card h3{margin:6px 0 4px;font-size:13px;color:var(--ink)}
+.card .partida{font-size:10.5px;color:var(--text)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:18px}
+.stat .lbl{font-size:8.5px;font-weight:600;color:var(--muted);letter-spacing:1px;display:flex;align-items:center;gap:6px}
+.stat .lbl::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--red);display:inline-block}
+.stat .val{font-size:22px;font-weight:900;color:var(--ink);margin-top:4px}
+
+.cities{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+.city-card{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:18px}
+.city-tag{display:inline-block;background:var(--red);color:#fff;font-size:9px;font-weight:700;padding:4px 10px;border-radius:8px;letter-spacing:.5px}
+.city-card h4{margin:8px 0 14px;font-size:20px;font-weight:900;color:var(--ink)}
+.city-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.city-grid .lbl{font-size:9px;color:var(--muted);font-weight:500}
+.city-grid .val{font-size:13px;font-weight:700;color:var(--ink);margin-top:2px}
+
+.qr-section h3{font-size:15px;font-weight:900;color:var(--ink);margin:24px 36px 4px}
+.qr-section .qr-desc{font-size:10px;color:var(--muted);margin:0 36px 14px;line-height:1.5}
+.qr-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:0 36px 28px}
+.qr-card{background:var(--white);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;align-items:center; break-inside: avoid;}
+.qr-head{width:100%;background:var(--red-soft);color:var(--red);font-weight:900;font-size:11px;text-align:center;padding:8px;letter-spacing:.5px}
+.qr-body{padding:14px;display:flex;align-items:center;justify-content:center}
+.qr-body img{width:140px;height:140px;display:block}
+.qr-foot{font-size:9px;color:var(--muted);padding:0 0 12px;font-weight:500}
+
+.table-title{padding:18px 36px 4px}
+.table-title h3{margin:0;font-size:18px;font-weight:900;color:var(--ink)}
+.table-title .sub{font-size:10.5px;color:var(--muted);font-weight:500;margin-top:4px}
+.table-wrap{padding:14px 36px 28px}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:10.5px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+thead th{background:var(--ink);color:#fff;text-align:left;padding:10px 8px;font-weight:700;font-size:10px;letter-spacing:.3px}
+thead th.c{text-align:center}
+tbody td{padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:middle;word-break:break-word}
+tbody tr:nth-child(odd) td{background:var(--bg)}
+tbody tr:last-child td{border-bottom:none}
+.num{text-align:center;color:var(--red);font-weight:900;font-size:12px;width:36px;white-space:nowrap}
+.name{font-weight:600;color:var(--ink);white-space:normal}
+.addr{color:var(--text);font-size:10px;white-space:normal;line-height:1.45;min-width:200px}
+.dist,.time{text-align:center;font-weight:700;color:var(--ink);width:60px;white-space:nowrap}
+.time{font-weight:500;color:var(--text)}
+.chk{width:32px;text-align:center}
+.cb input{display:none}
+.cb span{display:inline-block;width:14px;height:14px;border:1.2px solid var(--muted);border-radius:3px;background:#fff;cursor:pointer;vertical-align:middle;position:relative}
+.cb input:checked + span{background:var(--red);border-color:var(--red)}
+.cb input:checked + span::after{content:"";position:absolute;left:3px;top:0px;width:5px;height:9px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.maps{text-align:center;width:90px}
+.maps a{display:inline-block;background:var(--red);color:#fff;padding:6px 14px;border-radius:8px;text-decoration:none;font-weight:700;font-size:9.5px;transition:.15s}
+.maps a:hover{background:var(--red-dk);transform:translateY(-1px)}
+tr.city-break td{background:var(--red)!important;color:#fff;text-align:center;font-weight:900;font-size:11px;padding:10px;letter-spacing:.5px}
+
+.errors-section{padding:8px 36px 24px; break-before: page;}
+.errors-title{display:flex;align-items:center;gap:10px;margin:0 0 4px;font-size:16px;font-weight:900;color:var(--ink)}
+.errors-title .pill{display:inline-flex;align-items:center;gap:6px;background:#fff1f1;color:var(--red);border:1px solid #f5c2c2;padding:4px 10px;border-radius:999px;font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase}
+.errors-desc{font-size:10.5px;color:var(--muted);font-weight:500;margin:0 0 12px}
+.errors-table{width:100%;border-collapse:separate;border-spacing:0;font-size:10.5px;border:1px solid #f1c9c9;border-radius:10px;overflow:hidden}
+.errors-table thead th{background:var(--red);color:#fff;text-align:left;padding:10px 10px;font-weight:700;font-size:10px;letter-spacing:.3px}
+.errors-table tbody td{padding:10px;border-bottom:1px solid #f5dada;background:#fff8f8;vertical-align:middle}
+.errors-table tbody tr:last-child td{border-bottom:none}
+.errors-table .ln{width:48px;text-align:center;font-weight:900;color:var(--red)}
+.errors-table .reason{width:140px}
+.errors-table .reason .tag{display:inline-block;background:var(--red);color:#fff;padding:4px 9px;border-radius:6px;font-size:9.5px;font-weight:800;letter-spacing:.3px;white-space:nowrap}
+.errors-table .reason .tag.outlier{background:#E07A00}
+.errors-table .addr{color:var(--text);font-size:10.5px;line-height:1.45}
+.errors-empty{padding:16px;text-align:center;background:#f3faf3;border:1px dashed #b8d8b8;border-radius:10px;color:#3a6b3a;font-size:10.5px;font-weight:600;margin:0 36px 18px}
+
+@media print{
+  body{background:#fff}
+  .page{box-shadow:none;margin:0;border-radius:0;width:100%;max-width:none}
+  .page-break{page-break-after:always}
+  .qr-card,.card,.city-card,tr{page-break-inside:avoid;break-inside:avoid}
+  thead{display:table-header-group}
+  tr{page-break-inside:avoid}
+  a{color:inherit;text-decoration:none}
+}
+@media (max-width:720px){
+  .hero{flex-direction:column;align-items:flex-start;gap:12px}
+  .hero img{height:64px;align-self:flex-end}
+  .stats,.cities,.qr-grid{grid-template-columns:1fr 1fr}
+  .table-wrap{padding:14px 16px 22px}
+  .header,.section,.qr-section h3,.qr-section .qr-desc,.table-title{padding-left:18px;padding-right:18px}
+  .qr-grid{padding-left:18px;padding-right:18px}
+  .name,.addr{font-size:9.5px}
+  table{font-size:9.5px}
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="topbar"></div>
+  <div class="header">
+    <div>
+      <h1>MOMENT'S EVENTOS</h1>
+      <div class="sub">Rota de Entregas · {{ cidade }}</div>
+    </div>
+    <div class="pill">{{ data_atual }}</div>
+  </div>
+
+  <div class="hero">
+    <div>
+      <h2>Rota de Entregas</h2>
+      <div class="city">{{ cidade }}</div>
+      <div class="desc">Roteirização otimizada · {{ entregas_total }} paradas</div>
+      <div class="accent"></div>
+    </div>
+    {% if logo_base64 %}
+    <img src="{{ logo_base64 }}" alt="Moment's Eventos">
+    {% endif %}
+  </div>
+
+  <div class="section">
+    <div class="card">
+      <div class="label">RESUMO DA ROTA</div>
+      <h3>Partida</h3>
+      <div class="partida">{{ ponto_partida }}</div>
+      <div class="stats">
+        <div class="stat"><div class="lbl">DISTÂNCIA</div><div class="val">{{ distancia_total }}</div></div>
+        <div class="stat"><div class="lbl">TEMPO TOTAL</div><div class="val">{{ tempo_total }}</div></div>
+        <div class="stat"><div class="lbl">ENTREGAS</div><div class="val">{{ entregas_total }}</div></div>
+      </div>
+    </div>
+
+    <div class="cities">
+      {% for cid, stats in estatisticas_cidade.items() %}
+      <div class="city-card">
+        <span class="city-tag">{{ loop.index }}ª ETAPA</span>
+        <h4>{{ cid }}</h4>
+        <div class="city-grid">
+          <div><div class="lbl">Entregas</div><div class="val">{{ stats.entregas }}</div></div>
+          <div><div class="lbl">Distância</div><div class="val">{{ "%.1f"|format(stats.distancia) }} km</div></div>
+          <div><div class="lbl">Tempo</div><div class="val">{{ stats.tempo_formatado }}</div></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if arquivos_qr_gerados %}
+  <div class="qr-section">
+    <h3>Navegação GPS automatizada</h3>
+    <div class="qr-desc">Escaneie com a câmera do celular para abrir o trajeto no Google Maps.<br>Dividido em partes (limite de 10 paradas por vez).</div>
+    <div class="qr-grid">
+      {% for qr in arquivos_qr_gerados %}
+      <div class="qr-card">
+        <div class="qr-head">PARTE {{ loop.index }}</div>
+        <div class="qr-body"><img src="file://{{ qr }}" alt="QR Parte {{ loop.index }}"></div>
+        <div class="qr-foot">Aponte a câmera para iniciar</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="table-title" style="break-before: page;">
+    <h3>Ordem de visita</h3>
+    <div class="sub">{{ entregas_total }} entregas · marque conforme concluir</div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th class="c">#</th>
+          <th>Nome</th>
+          <th>Endereço</th>
+          <th class="c">Dist.</th>
+          <th class="c">Tempo</th>
+          <th class="c">Maps</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for parada in paradas %}
+        {% if parada.mudanca_cidade %}
+        <tr class="city-break"><td colspan="7">MUDANÇA DE CIDADE · INDO PARA {{ parada.cidade_atual|upper }}</td></tr>
+        {% endif %}
+        <tr>
+          <td class="chk"><label class="cb"><input type="checkbox"><span></span></label></td>
+          <td class="num">{{ loop.index }}</td>
+          <td class="name">{{ parada.nome }}</td>
+          <td class="addr">{{ parada.endereco }}</td>
+          <td class="dist">{{ "%.1f"|format(parada.dist_trecho) }} km</td>
+          <td class="time">{{ parada.dur_trecho }} min</td>
+          <td class="maps"><a href="{{ parada.link }}" target="_blank" rel="noopener">ABRIR ›</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if enderecos_com_erro %}
+  <div class="errors-section">
+    <h3 class="errors-title">
+      Apêndice A · Endereços com Erro
+      <span class="pill">⚠ Atenção</span>
+    </h3>
+    <p class="errors-desc">A lista abaixo contém endereços com problemas — não encontrados pelo geocoder ou identificados como outliers (muito distantes da rota). As linhas correspondentes na planilha original foram marcadas em vermelho.</p>
+
+    <table class="errors-table" id="errorsTable">
+      <thead>
+        <tr>
+          <th class="ln">Linha</th>
+          <th>Nome</th>
+          <th>Endereço</th>
+          <th class="reason">Motivo do Erro</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for err in enderecos_com_erro %}
+        <tr>
+          <td class="ln">{{ err.linha }}</td>
+          <td class="name">{{ err.nome }}</td>
+          <td class="addr">{{ err.endereco }}</td>
+          <td class="reason"><span class="tag{% if 'outlier' in err.motivo|lower %} outlier{% endif %}">{{ err.motivo }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="errors-section">
+    <h3 class="errors-title">
+      Apêndice A · Endereços com Erro
+    </h3>
+    <div class="errors-empty" id="errorsEmpty">✓ Todos os endereços foram localizados com sucesso.</div>
+  </div>
+  {% endif %}
+</div>
+</body>
+</html>
